@@ -1,0 +1,6 @@
+sqftr
+nob
+nob.old
+*.dSYM/
+compile_commands.json
+.cache/

@@ -1,0 +1,51 @@
+{
+    "flooring": {"acacia": 4.99, "large_tile": 7, "bath_tile": 6},
+    "rooms":
+    [
+        {
+            "name": "sunroom",
+            "segments": [ "R15.75", "D7.67", "L8.0", "D3.92", "L7.75", "U11.58" ],
+            "flooring": "acacia"
+        },
+        {
+            "name": "loft",
+            "segments": [ "R15.17", "D9.5", "L3.83", "D8.92", "L3.33", "U10.83", "L8.0", "U7.42" ],
+            "flooring": "acacia"
+        },
+        {
+            "name": "bedroom",
+            "segments": [ "R20.58", "D8.17", "L7.58", "D8.42", "L13.0", "U16.5"],
+            "flooring": "acacia"
+        },
+        {
+            "name": "master bath",
+            "segments": [ "R7.92", "D7.42", "L4.92", "U1.25", "L3.0", "U6.17"],
+            "flooring": "bath_tile"
+        },
+        {
+            "name": "foyer",
+            "segments": ["R15.17", "D7.92", "L15.17", "U7.92"],
+            "flooring": "acacia"
+        },
+        {
+            "name": "slider",
+            "segments": [ "R7.75", "D7.5", "L7.75", "U7.5"],
+            "flooring": "acacia"
+        },
+        {
+            "name": "living room",
+            "segments": [ "R27.5", "D19.33", "L10.83", "D3.92", "L8.75", "U12.75", "L7.83", "U10.5"],
+            "flooring": "acacia"
+        },
+        {
+            "name": "mudroom",
+            "segments": [ "R15.33", "D7.5", "L7.92", "D3.67", "L7.5", "U11.17"],
+            "flooring": "large_tile"
+        },
+        {
+            "name": "dining/kitchen",
+            "segments": [ "R29.0", "D6.0", "L11.83", "D5.58", "L11.17", "U1.25", "L6.42", "U10.33"],
+            "flooring": "acacia"
+        }
+    ]
+}
