@@ -315,7 +315,7 @@ void render_areas(Rooms * rooms, size_t start, size_t end, Vector2 *tracking)
     float y = tracking->y + PAD;
     for (size_t i = start; i < end; i++) {
         printf("drawing area for %s [%zu] at (%.2f,%.2f)\n", rooms->items[i].name, i, tracking->x + rooms->items[i].bb.height, y);
-        DrawRectangleLines(, y, PAD, PAD, RED);
+        DrawRectangleLines(1, y, PAD, PAD, RED);
     }
 }
 

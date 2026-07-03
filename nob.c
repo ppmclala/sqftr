@@ -31,7 +31,7 @@ void generate_compile_commands(Nob_Cmd cmd) {
 
     String_View sv = sb_to_sv(sb);
 
-    fprintf(f, temp_sv_to_cstr(sv));
+    fprintf(f, "%s", temp_sv_to_cstr(sv));
 
     fclose(f);
 }
@@ -50,7 +50,7 @@ int main(int argc, char **argv)
 
     cmd_append(&cmd, "clang", "-Wall", "-Wextra", "-ggdb");
     cmd_append(&cmd, "-I./raylib-5.5_macos/include/");
-    cmd_append(&cmd, "-o", "./sqftr", "main.c");
+    cmd_append(&cmd, "-o", "./sqftr", "sqftr.c");
     cmd_append(&cmd, "-L./raylib-5.5_macos/lib/");
     cmd_append(&cmd, "-lraylib", "-Wl,-rpath,./raylib-5.5_macos/lib/");
     cmd_append(&cmd, "-lm");
