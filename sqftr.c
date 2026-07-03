@@ -14,13 +14,14 @@
 Color BG_COLOR = CLITERAL(Color){18, 18, 18, 255};
 Color FG_COLOR = SKYBLUE;
 Color FONT_COLOR = RAYWHITE;
-const char *FONT_PATH = "./ZenDots-Regular.ttf";
+const char *FONT_PATH = "./VinaSans-Regular.ttf";
 int WIDTH = 1600;
 int HEIGHT = 1000;
 float FONT_SIZE = 18.0;
 int PAD = 25;
 int BUFFER = 400;
 float SCALE = 15;
+Vector2 UNINITIALIZED = (Vector2) { FLT_MIN, FLT_MIN };
 
 typedef struct {
     char *name;
@@ -50,10 +51,13 @@ typedef struct {
 typedef struct {
     const char *name;
     Segments segments;
+    Segments scaled;
     float area;
     float waste;
     char *flooring;
     Rectangle bb;
+    Vector2 position;;
+    Vector2 label_position;
 } Room;
 
 typedef struct {
@@ -154,6 +158,35 @@ float calculate_segments_area(const Segments *segments) {
     return fabsf(area) * 0.5f;
 }
 
+void scale_segments(Room *room)
+{
+    da_foreach(Segment, s, &room->segments) {
+        Vector2 start = Vector2Scale(s->start, SCALE);
+        Vector2 end = Vector2Scale(s->end, SCALE);
+        Segment scaled =(Segment) { .start = start, .end = end, .dir = s->dir };
+        da_append(&room->scaled, scaled);
+    }
+}
+
+void calculate_bounding_box(Room *room) {
+    float min_x = FLT_MAX;
+    float max_x = FLT_MIN;
+    float min_y = FLT_MAX;
+    float max_y = FLT_MIN;
+    scale_segments(room);
+    da_foreach(Segment, s, &room->scaled) {
+        if (s->start.x < min_x) min_x = s->start.x;
+        if (s->start.x > max_x) max_x = s->start.x;
+        if (s->start.y < min_y) min_y = s->start.y;
+        if (s->start.y > max_y) max_y = s->start.y;
+        if (s->end.x < min_x) min_x = s->end.x;
+        if (s->end.x > max_x) max_x = s->end.x;
+        if (s->end.y < min_y) min_y = s->end.y;
+        if (s->end.y > max_y) max_y = s->end.y;
+    }
+    room->bb = (Rectangle){.x = min_x, .y = min_y, .width = max_x - min_x, .height = max_y - min_y};
+}
+
 bool load_room(Jimp *jimp, Room *rm) {
     if (!jimp_object_begin(jimp)) return false;
 
@@ -169,6 +202,7 @@ bool load_room(Jimp *jimp, Room *rm) {
             rm->segments = segments;
             rm->area = calculate_segments_area(&rm->segments);
             rm->waste = rm->area * 0.1f;
+            calculate_bounding_box(rm);
             continue;
         } else if (strcmp(jimp->string, "flooring") == 0) {
             if (!jimp_string(jimp)) return false;
@@ -178,6 +212,9 @@ bool load_room(Jimp *jimp, Room *rm) {
     }
 
     if (!jimp_object_end(jimp)) return false;
+
+    rm->position = UNINITIALIZED;
+    rm->label_position = UNINITIALIZED;
 
     return true;
 }
@@ -265,74 +302,61 @@ void render_area(Room *room, Vector2 position) {
     render_text(TextFormat("%s: %.0f", room->name, room->area), center, FONT_SIZE, FONT_COLOR);
 }
 
-void render_bb(Room *room, Vector2 position)
-{
-    DrawRectangleLines(position.x + room->bb.x, position.y + room->bb.y, room->bb.width, room->bb.height, YELLOW);
+void render_bb(Room *room) {
+    DrawRectangleLines(room->position.x, room->position.y, room->bb.width, room->bb.height, YELLOW);
 }
 
-void draw_room(Room *room, const Vector2 position, Vector2 *tracking) {
-    da_foreach(Segment, s, &room->segments) {
-        Vector2 start = Vector2Add(Vector2Scale(s->start, SCALE), position);
-        Vector2 end = Vector2Add(Vector2Scale(s->end, SCALE), position);
-
-        if (start.x > tracking->x) tracking->x = start.x;
-        if (end.x > tracking->x) tracking->x = end.x;
-        if (start.y > tracking->y) tracking->y = start.y;
-        if (end.y > tracking->y) tracking->y = end.y;
-
+void draw_room(Room *room) {
+    da_foreach(Segment, s, &room->scaled) {
+        Vector2 start = Vector2Add(s->start, room->position);
+        Vector2 end = Vector2Add(s->end, room->position);
         DrawLineEx(start, end, 3.0, FG_COLOR);
     }
 
-    render_bb(room, position);
+    render_bb(room);
 }
 
-void layout_room(Room *room) {
-    float min_x = FLT_MAX;
-    float max_x = FLT_MIN;
-    float min_y = FLT_MAX;
-    float max_y = FLT_MIN;
-    da_foreach(Segment, s, &room->segments) {
-        Vector2 start = Vector2Scale(s->start, SCALE);
-        Vector2 end = Vector2Scale(s->end, SCALE);
-        if (start.x < min_x) min_x = start.x;
-        if (start.x > max_x) max_x = start.x;
-        if (start.y < min_y) min_y = start.y;
-        if (start.y > max_y) max_y = start.y;
-        if (end.x < min_x) min_x = end.x;
-        if (end.x > max_x) max_x = end.x;
-        if (end.y < min_y) min_y = end.y;
-        if (end.y > max_y) max_y = end.y;
-    }
-    room->bb = (Rectangle) {.x = min_x, .y = min_y, .width = max_x - min_x, .height = max_y - min_y};
-}
-
-void layout_rooms(Rooms *rooms) {
-    da_foreach(Room, r, rooms) { layout_room(r); }
-}
-
-void render_areas(Rooms * rooms, size_t start, size_t end, Vector2 *tracking)
-{
+void render_areas(Rooms *rooms, size_t start, size_t end, Vector2 *tracking) {
     float y = tracking->y + PAD;
     for (size_t i = start; i < end; i++) {
-        printf("drawing area for %s [%zu] at (%.2f,%.2f)\n", rooms->items[i].name, i, tracking->x + rooms->items[i].bb.height, y);
+        printf("drawing area for %s [%zu] at (%.2f,%.2f)\n", rooms->items[i].name, i,
+               tracking->x + rooms->items[i].bb.height, y);
         DrawRectangleLines(1, y, PAD, PAD, RED);
     }
 }
 
-void draw_rooms(Rooms *rooms, Vector2 *tracking) {
-    Vector2 position = {.x = 0, .y = PAD};
-    size_t row_start = 0, room_idx = 0;
+void draw_rooms(Rooms *rooms) {
     da_foreach(Room, r, rooms) {
-        position.x = tracking->x + PAD;
-        if (position.x + r->bb.width > WIDTH) {
-            // render_area(room, position);
-            render_areas(rooms, row_start, room_idx, tracking);
-            position = (Vector2){.x = PAD, .y = tracking->y + PAD};
-            tracking->x = position.x;
-            tracking->y = position.y;
-            row_start = room_idx;
+        draw_room(r);
+    }
+}
+
+Vector2 room_max(Room *room)
+{
+    if (Vector2Equals(room->position, UNINITIALIZED)) {
+        printf("Room has not been laid out: %s", room->name);
+        exit(1);
+    }
+
+    return (Vector2) { room->position.x + room->bb.width, room->position.y + room->bb.height };
+}
+
+void layout_rooms(Rooms *rooms)
+{
+    size_t room_idx = 0;
+    float max_y = FLT_MIN, row_y = PAD, next_x = PAD;
+    da_foreach(Room, r, rooms) {
+        if (room_idx != 0) {
+            next_x = room_max(&rooms->items[room_idx - 1]).x + PAD;
         }
-        draw_room(r, position, tracking);
+        if (next_x + r->bb.width + PAD > WIDTH) {
+            next_x = PAD;
+            row_y += max_y + PAD;
+        }
+        r->position.x = next_x;
+        r->position.y = row_y;
+        float y = room_max(r).y;
+        if (max_y < y) max_y = y;
         room_idx++;
     }
 }
@@ -358,11 +382,10 @@ int main(void) {
         ClearBackground(BG_COLOR);
 
         layout_rooms(&rooms);
-        Vector2 tracking = {.x = 0, .y = 0};
-        draw_rooms(&rooms, &tracking);
+        draw_rooms(&rooms);
         render_text(TextFormat("%d Rooms. Total sqf: %.2f (%.2f w/ waste)\nTotal Price: %.2f", rooms.count,
                                rooms.total_area, rooms.total_area + rooms.total_waste, rooms.total_price),
-                    (Vector2){.x = 250, .y = tracking.y + 125}, 48, LIME);
+                    (Vector2){.x = 250, .y = HEIGHT - 250}, 48, LIME);
         EndDrawing();
     }
     CloseWindow();
