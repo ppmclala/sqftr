@@ -1,5 +1,5 @@
 {
-    "flooring": {"acacia": 4.99, "large_tile": 7, "bath_tile": 6},
+    "flooring": {"acacia": 4.99, "large_tile": 7, "bath_tile": 6, "none": 0.0},
     "rooms":
     [
         {
@@ -28,13 +28,13 @@
             "flooring": "acacia"
         },
         {
-            "name": "slider",
-            "segments": [ "R7.75", "D7.5", "L7.75", "U7.5"],
+            "name": "living room",
+            "segments": [ "R27.5", "D19.33", "L10.83", "D3.92", "L8.75", "U12.75", "L7.83", "U10.5"],
             "flooring": "acacia"
         },
         {
-            "name": "living room",
-            "segments": [ "R27.5", "D19.33", "L10.83", "D3.92", "L8.75", "U12.75", "L7.83", "U10.5"],
+            "name": "slider",
+            "segments": [ "R7.75", "D7.5", "L7.75", "U7.5"],
             "flooring": "acacia"
         },
         {
@@ -44,8 +44,8 @@
         },
         {
             "name": "dining/kitchen",
-            "segments": [ "R29.0", "D6.0", "L11.83", "D5.58", "L11.17", "U1.25", "L6.42", "U10.33"],
-            "flooring": "acacia"
+            "segments": [ "R29.42", "D6.0", "L11.83", "D5.58", "L11.17", "U1.25", "L6.42", "U10.33"],
+            "flooring": "none"
         }
     ]
 }

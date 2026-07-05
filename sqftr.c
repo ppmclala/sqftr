@@ -11,21 +11,27 @@
 #define JIMP_IMPLEMENTATION
 #include "jimp.h"
 
+bool RENDER_BB = false;
+bool TRIANGULATE = false;
 Color BG_COLOR = CLITERAL(Color){18, 18, 18, 255};
 Color FG_COLOR = SKYBLUE;
 Color FONT_COLOR = RAYWHITE;
 const char *FONT_PATH = "./VinaSans-Regular.ttf";
-int WIDTH = 1600;
+int WIDTH = 1400;
 int HEIGHT = 1000;
-float FONT_SIZE = 18.0;
+float FONT_SIZE = 24.0;
 int PAD = 25;
+int LABEL_HEIGHT = 50;
 int BUFFER = 400;
 float SCALE = 15;
-Vector2 UNINITIALIZED = (Vector2) { FLT_MIN, FLT_MIN };
+Vector2 UNINITIALIZED = (Vector2){FLT_MIN, FLT_MIN};
+Font FONT;
 
 typedef struct {
     char *name;
     float price;
+    float total_cost;
+    float total_sqft;
 } Flooring;
 
 typedef struct {
@@ -56,7 +62,7 @@ typedef struct {
     float waste;
     char *flooring;
     Rectangle bb;
-    Vector2 position;;
+    Vector2 position;
     Vector2 label_position;
 } Room;
 
@@ -92,7 +98,7 @@ bool load_flooring(Jimp *jimp, FlooringOptions *flooring_opts) {
 
     while (jimp_object_member(jimp)) {
         Flooring fl = {0};
-        fl.name = jimp->string;
+        fl.name = strdup(jimp->string);
         if (!jimp_number(jimp)) return false;
         fl.price = jimp->number;
         da_append(flooring_opts, fl);
@@ -158,12 +164,11 @@ float calculate_segments_area(const Segments *segments) {
     return fabsf(area) * 0.5f;
 }
 
-void scale_segments(Room *room)
-{
+void scale_segments(Room *room) {
     da_foreach(Segment, s, &room->segments) {
         Vector2 start = Vector2Scale(s->start, SCALE);
         Vector2 end = Vector2Scale(s->end, SCALE);
-        Segment scaled =(Segment) { .start = start, .end = end, .dir = s->dir };
+        Segment scaled = (Segment){.start = start, .end = end, .dir = s->dir};
         da_append(&room->scaled, scaled);
     }
 }
@@ -207,7 +212,7 @@ bool load_room(Jimp *jimp, Room *rm) {
         } else if (strcmp(jimp->string, "flooring") == 0) {
             if (!jimp_string(jimp)) return false;
             // TODO: validate
-            rm->flooring = jimp->string;
+            rm->flooring = strdup(jimp->string);
         }
     }
 
@@ -222,7 +227,11 @@ bool load_room(Jimp *jimp, Room *rm) {
 float calculate_price(FlooringOptions *fl_opts, Room *room) {
     da_foreach(Flooring, f, fl_opts) {
         if (strcmp(f->name, room->flooring) == 0) {
-            return f->price * (room->area + room->waste);
+            float room_area_with_waste = room->area + room->waste;
+            float room_total = f->price * room_area_with_waste;
+            f->total_cost += room_total;
+            f->total_sqft += room_area_with_waste;
+            return room_total;
         }
     }
 
@@ -263,43 +272,18 @@ bool init_sqftr(Jimp *jimp, FlooringOptions *fl_opts, Rooms *rms) {
     return true;
 }
 
-Vector2 get_centroid(const Segments *segments) {
-    if (segments == NULL || segments->count == 0 || segments->items == NULL) {
-        return (Vector2){0.0f, 0.0f};
-    }
-
-    float min_x = segments->items[0].start.x;
-    float max_x = min_x;
-    float min_y = segments->items[0].start.y;
-    float max_y = min_y;
-
-    for (size_t i = 1; i < segments->count; i++) {
-        Vector2 p = segments->items[i].start;
-        if (p.x < min_x) min_x = p.x;
-        if (p.x > max_x) max_x = p.x;
-        if (p.y < min_y) min_y = p.y;
-        if (p.y > max_y) max_y = p.y;
-    }
-
-    Vector2 c = {.x = min_x + (max_x - min_x) * 0.5f, .y = min_y + (max_y - min_y) * 0.5f};
-
-    return c;
-}
-
-void render_text(const char *text, Vector2 center, int font_size, Color font_color) {
+void render_text(const char *text, Vector2 center, Font font, int font_size, Color font_color) {
     int textWidth = MeasureText(text, FONT_SIZE);
     float offsetX = textWidth * 0.5f;
     float offsetY = FONT_SIZE * 0.5f;
 
-    Font font = LoadFont(FONT_PATH);
     DrawTextEx(font, text, (Vector2){(int)(center.x - offsetX), (int)(center.y - offsetY)}, font_size, 1, font_color);
 }
 
-void render_area(Room *room, Vector2 position) {
+void render_label(Room *room, Font font) {
     if (room == NULL || room->segments.count == 0) return;
-
-    Vector2 center = Vector2Add(Vector2Scale(get_centroid(&room->segments), SCALE), position);
-    render_text(TextFormat("%s: %.0f", room->name, room->area), center, FONT_SIZE, FONT_COLOR);
+    render_text(TextFormat("%s: %.0f\n%s", room->name, room->area, room->flooring), room->label_position, font,
+                FONT_SIZE, FONT_COLOR);
 }
 
 void render_bb(Room *room) {
@@ -313,51 +297,108 @@ void draw_room(Room *room) {
         DrawLineEx(start, end, 3.0, FG_COLOR);
     }
 
-    render_bb(room);
-}
-
-void render_areas(Rooms *rooms, size_t start, size_t end, Vector2 *tracking) {
-    float y = tracking->y + PAD;
-    for (size_t i = start; i < end; i++) {
-        printf("drawing area for %s [%zu] at (%.2f,%.2f)\n", rooms->items[i].name, i,
-               tracking->x + rooms->items[i].bb.height, y);
-        DrawRectangleLines(1, y, PAD, PAD, RED);
-    }
+    if (RENDER_BB) render_bb(room);
 }
 
 void draw_rooms(Rooms *rooms) {
-    da_foreach(Room, r, rooms) {
-        draw_room(r);
-    }
+    da_foreach(Room, r, rooms) { draw_room(r); }
 }
 
-Vector2 room_max(Room *room)
-{
+Vector2 room_max(Room *room) {
     if (Vector2Equals(room->position, UNINITIALIZED)) {
         printf("Room has not been laid out: %s", room->name);
         exit(1);
     }
 
-    return (Vector2) { room->position.x + room->bb.width, room->position.y + room->bb.height };
+    return (Vector2){room->position.x + room->bb.width, room->position.y + room->bb.height};
 }
 
-void layout_rooms(Rooms *rooms)
-{
-    size_t room_idx = 0;
+void layout_labels(Rooms *rooms, size_t start_idx, size_t end_idx, float y) {
+    for (size_t i = start_idx; i < end_idx; i++) {
+        float cx = rooms->items[i].position.x + PAD + (rooms->items[i].bb.width / 2.0f);
+        rooms->items[i].label_position = (Vector2){.x = cx, .y = y};
+    }
+}
+
+void layout_rooms(Rooms *rooms) {
+    size_t room_idx = 0, row_start = 0;
     float max_y = FLT_MIN, row_y = PAD, next_x = PAD;
     da_foreach(Room, r, rooms) {
         if (room_idx != 0) {
             next_x = room_max(&rooms->items[room_idx - 1]).x + PAD;
         }
         if (next_x + r->bb.width + PAD > WIDTH) {
+            layout_labels(rooms, row_start, room_idx, max_y + PAD);
+            row_start = room_idx;
             next_x = PAD;
-            row_y += max_y + PAD;
+            row_y += max_y + LABEL_HEIGHT + PAD;
+            max_y = FLT_MIN; // kind of uneccessary
         }
         r->position.x = next_x;
         r->position.y = row_y;
         float y = room_max(r).y;
         if (max_y < y) max_y = y;
         room_idx++;
+    }
+    if (room_idx % row_start > 0) {
+        layout_labels(rooms, row_start, room_idx, max_y + PAD);
+    }
+}
+
+void render_flooring_stats(FlooringOptions *fl_opts, Vector2 position, Font font) {
+    da_foreach(Flooring, f, fl_opts) {
+        render_text(TextFormat("%s: %.2f sqft @ %.2f = $%.2f", f->name, f->total_sqft, f->price, f->total_cost),
+                    position, font, 36, GRAY);
+        position.y += FONT_SIZE + 5;
+    }
+}
+
+void render_summary(Rooms *rooms, FlooringOptions *fl_opts, Font font) {
+    float y = da_last(rooms).label_position.y + LABEL_HEIGHT + PAD;
+    Vector2 position = {.x = 300, .y = y};
+
+    const char *summary_text =
+        TextFormat("%d Rooms. Total sqf: %.2f (%.2f w/ waste)\nTotal Price: %.2f", rooms->count, rooms->total_area,
+                   rooms->total_area + rooms->total_waste, rooms->total_price);
+
+    render_text(summary_text, position, font, 48, LIME);
+
+    int sz = MeasureText(summary_text, FONT_SIZE);
+
+    // TODO: 100 is magic
+    render_flooring_stats(fl_opts, (Vector2){position.x + sz + 150, position.y}, font);
+}
+
+void draw_labels(Rooms *rooms, Font font) {
+    da_foreach(Room, r, rooms) { render_label(r, font); };
+}
+
+void draw_triangles(Rooms *rooms) {
+    Room *r = &rooms->items[0];
+    da_foreach(Room, r, rooms) {
+        for (size_t x = 0; x < r->scaled.count; x++) {
+            Segment *s = &r->scaled.items[x];
+            Vector2 prev_vertex = UNINITIALIZED;
+            if (x == 0) {
+                da_last(&r->scaled).end = s->start;
+                prev_vertex = da_last(&r->scaled).start;
+            } else {
+                prev_vertex = r->scaled.items[x - 1].start;
+            }
+            printf("triangulating for s: (%.2f, %.2f)\n", s->start.x, s->end.y);
+            for (size_t j = 0; j < r->scaled.count; j++) {
+                Vector2 target = r->scaled.items[j].start;
+                printf("Checking NN for target(%.2f, %.2f) ?= v(%.2f, %.2f)  ?= prev_end(%.2f, %.2f)\n", target.x,
+                       target.y, s->start.x, s->start.y, prev_vertex.x, prev_vertex.y);
+
+                if (!Vector2Equals(target, s->start) && !Vector2Equals(target, s->end) &&
+                    !Vector2Equals(target, prev_vertex)) {
+                    DrawLineEx(Vector2Add(s->start, r->position), Vector2Add(target, r->position), 2.0, ORANGE);
+                    printf("***Drawing Line for s(%.2f, %.2f) to target(%.2f, %.2f)\n", s->start.x, s->start.y,
+                           target.x, target.y);
+                }
+            }
+        }
     }
 }
 
@@ -376,6 +417,7 @@ int main(void) {
 
     InitWindow(WIDTH, HEIGHT, "sqftr");
     SetTargetFPS(60);
+    Font font = LoadFont(FONT_PATH);
 
     while (!WindowShouldClose()) {
         BeginDrawing();
@@ -383,9 +425,9 @@ int main(void) {
 
         layout_rooms(&rooms);
         draw_rooms(&rooms);
-        render_text(TextFormat("%d Rooms. Total sqf: %.2f (%.2f w/ waste)\nTotal Price: %.2f", rooms.count,
-                               rooms.total_area, rooms.total_area + rooms.total_waste, rooms.total_price),
-                    (Vector2){.x = 250, .y = HEIGHT - 250}, 48, LIME);
+        draw_labels(&rooms, font);
+        render_summary(&rooms, &fl_opts, font);
+        if (TRIANGULATE) draw_triangles(&rooms);
         EndDrawing();
     }
     CloseWindow();
